@@ -416,7 +416,7 @@ function fin(){setPlay(false);if(mrx&&mrx.state!='inactive')mrx.stop()}
 function b64(b){return new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(',')[1]);f.readAsDataURL(b)})}
 async function saveShare(){const b=new Blob(chx,{type:mimeBase}),name='DropMotion_'+Date.now()+'.'+ext,P=window.Capacitor&&Capacitor.Plugins;
  try{if(P&&P.Filesystem){const w=await P.Filesystem.writeFile({path:name,data:await b64(b),directory:'CACHE'});
-if(P.Media){try{const ap=(await P.Media.getAlbumsPath()).path,al=ap+'/DropMotion';try{await P.Media.createAlbum({name:'DropMotion'})}catch(e){}await P.Media.saveVideo({path:w.uri,albumIdentifier:al,fileName:name.replace(/\.[^.]+$/,'')});toast('Gallery me save ho gaya: DropMotion album');return}catch(e){toast('Gallery save fail, share khul raha hai')}}
+try{const GS=window.Capacitor&&Capacitor.registerPlugin?Capacitor.registerPlugin('GallerySaver'):null;if(GS){await GS.save({path:w.uri,name:name,mime:mimeBase});toast('Gallery me save ho gaya: Movies/DropMotion');return}}catch(e){toast('Gallery save error: '+((e&&e.message)||e))}
 if(P.Share){await P.Share.share({title:name,url:w.uri});return}}
   const f=new File([b],name,{type:mimeBase});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){}
  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click()}
