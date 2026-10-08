@@ -22,22 +22,22 @@ jobs:
 
       - name: Check web files
         run: |
-          test -f www/index.html || (echo "www/index.html nahi mila. drop-motion-app-index.html ko www/index.html naam se upload karo." && exit 1)
+          test -f www/index.html || (echo "www/index.html nahi mila" && exit 1)
 
       - name: Install Capacitor
         run: |
           npm init -y
-          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6 @capacitor-community/media@6
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/filesystem@6 @capacitor/share@6
 
       - name: Capacitor config
         run: |
-          cat > capacitor.config.json <<'EOF'
+          cat > capacitor.config.json <<'EOC'
           {
             "appId": "com.dropmotion.app",
             "appName": "Drop Motion",
             "webDir": "www"
           }
-          EOF
+          EOC
 
       - name: Add Android platform
         run: npx cap add android
@@ -50,6 +50,93 @@ jobs:
           else
             echo "assets/icon.png nahi hai, default icon rahega"
           fi
+
+      - name: Permissions (mic, camera, media)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <application|' $M
+          grep -c "RECORD_AUDIO" $M
+
+      - name: Gallery saver plugin (MediaStore)
+        run: |
+          D=android/app/src/main/java/com/dropmotion/app
+          mkdir -p $D
+          cat > $D/GallerySaverPlugin.java <<'EOJ'
+          package com.dropmotion.app;
+
+          import android.content.ContentResolver;
+          import android.content.ContentValues;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Environment;
+          import android.provider.MediaStore;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+          import java.io.File;
+          import java.io.FileInputStream;
+          import java.io.InputStream;
+          import java.io.OutputStream;
+
+          @CapacitorPlugin(name = "GallerySaver")
+          public class GallerySaverPlugin extends Plugin {
+            @PluginMethod
+            public void save(PluginCall call) {
+              try {
+                String path = call.getString("path");
+                String name = call.getString("name", "DropMotion.mp4");
+                String mime = call.getString("mime", "video/mp4");
+                File src = new File(Uri.parse(path).getPath());
+                ContentResolver r = getContext().getContentResolver();
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                if (Build.VERSION.SDK_INT >= 29) {
+                  v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/DropMotion");
+                  v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                } else {
+                  File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "DropMotion");
+                  dir.mkdirs();
+                  v.put(MediaStore.MediaColumns.DATA, new File(dir, name).getAbsolutePath());
+                }
+                Uri u = r.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, v);
+                OutputStream o = r.openOutputStream(u);
+                InputStream in = new FileInputStream(src);
+                byte[] b = new byte[65536];
+                int n;
+                while ((n = in.read(b)) > 0) o.write(b, 0, n);
+                o.close();
+                in.close();
+                if (Build.VERSION.SDK_INT >= 29) {
+                  v.clear();
+                  v.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                  r.update(u, v, null, null);
+                }
+                JSObject ret = new JSObject();
+                ret.put("uri", u.toString());
+                call.resolve(ret);
+              } catch (Exception e) {
+                call.reject(String.valueOf(e.getMessage()));
+              }
+            }
+          }
+          EOJ
+          cat > $D/MainActivity.java <<'EOJ'
+          package com.dropmotion.app;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+            @Override
+            public void onCreate(Bundle savedInstanceState) {
+              registerPlugin(GallerySaverPlugin.class);
+              super.onCreate(savedInstanceState);
+            }
+          }
+          EOJ
 
       - name: Sync web files
         run: npx cap sync android
