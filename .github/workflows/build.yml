@@ -1,46 +1,62 @@
-name: Build APK
+name: Build Drop Motion APK
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches: [main, master]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Create Capacitor project
+      - name: Check web files
         run: |
-          mkdir -p www
-          cp index.html www/index.html
+          test -f www/index.html || (echo "www/index.html nahi mila. drop-motion-app-index.html ko www/index.html naam se upload karo." && exit 1)
+
+      - name: Install Capacitor
+        run: |
           npm init -y
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
-          npx cap init "Drop Motion" com.dropmotion.app --web-dir www
-          npx cap add android
 
-      - name: Add permissions
+      - name: Capacitor config
         run: |
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />\n    <application#' $MANIFEST
-          npx cap sync android
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.dropmotion.app",
+            "appName": "Drop Motion",
+            "webDir": "www"
+          }
+          EOF
+
+      - name: Add Android platform
+        run: npx cap add android
+
+      - name: App icon (optional, assets/icon.png)
+        run: |
+          if [ -f assets/icon.png ]; then
+            npm install -D @capacitor/assets
+            npx capacitor-assets generate --android
+          else
+            echo "assets/icon.png nahi hai, default icon rahega"
+          fi
+
+      - name: Sync web files
+        run: npx cap sync android
 
       - name: Build debug APK
+        working-directory: android
         run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
