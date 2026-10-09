@@ -199,6 +199,21 @@ function body(l,st,stroke){const w=l.w,h=l.h;
  if(l.type=='text'){X[stroke?'strokeStyle':'fillStyle']=st;X.font=`${l.fs}px "${l.font}"`;X.textAlign='center';X.textBaseline='middle';const ls=l.text.split('\n'),lh=l.fs*1.18,y0=-(ls.length-1)*lh/2;ls.forEach((s,i)=>stroke?X.strokeText(s,0,y0+i*lh):X.fillText(s,0,y0+i*lh))}
  else if(l.type=='shape'){X[stroke?'strokeStyle':'fillStyle']=st;X.beginPath();path(X,l.shape);stroke?X.stroke():X.fill()}
  else try{if(stroke){X.strokeStyle=st;X.strokeRect(-w/2,-h/2,w,h)}else X.drawImage(l.el,-w/2,-h/2,w,h)}catch(e){}}
+/* ---------- glow engine v2: drawn ON TOP, additive, own colours ---------- */
+const GLK=['glow','deep','bloom'];
+const _b={mode:'src',col:'#ffffff',bl:'lighter',op:1,pls:0,pla:.4,ox:0,oy:0,sat:1.2,thr:0};
+const GP={glow:Object.assign({},_b,{rad:30,spr:2,bri:1.3}),deep:Object.assign({},_b,{rad:90,spr:3,bri:1.4,sat:1.4,col:'#7c5cff'}),bloom:Object.assign({},_b,{rad:60,spr:3,bri:1.6,thr:1}),neon:Object.assign({},_b,{rad:30,spr:2,bri:1,sat:1,mode:'cus',col:'#25d9ff',wid:6})};
+const GV=(l,k,n)=>l.fp&&l.fp[k+'_'+n]!==undefined?l.fp[k+'_'+n]:GP[k][n];
+const GLAB={rad:['Radius',0,200,1],spr:['Layers',1,6,1],bri:['Brightness',.5,3,.05],sat:['Saturation',0,3,.05],thr:['Threshold',0,3,.05],op:['Strength',0,2,.05],pls:['Pulse speed',0,4,.1],pla:['Pulse depth',0,1,.05],ox:['Offset X',-80,80,1],oy:['Offset Y',-80,80,1],wid:['Line width',1,30,1]};
+function glowPass(l,k,a,tt,pass,F,K,f){const g=n=>GV(l,k,n),spr=Math.max(1,Math.round(g('spr')));
+ let amt=a*g('op');if(g('pls'))amt*=1+g('pla')*Math.sin(tt*g('pls')*6.283);amt=Math.max(0,amt);
+ const ga=X.globalAlpha,base=F.length?F.join(' ')+' ':'',flt=`contrast(${1+g('thr')*.8}) brightness(${g('bri')+g('thr')*.25}) saturate(${g('sat')}) `;
+ X.save();X.globalCompositeOperation=g('bl');
+ for(let i=1;i<=spr;i++){X.globalAlpha=clamp(ga*amt/spr*1.5,0,1);X.filter=base+flt+`blur(${Math.max(.1,g('rad')*i/spr*K)}px)`;pass(g('mode')=='cus'?g('col'):f,g('ox'),g('oy'))}
+ X.restore()}
+function fxSet(l,k){const g=n=>GV(l,k,n),st='style="background:#2a3150;color:#fff;border:0;border-radius:8px;padding:6px"';
+ let h=`<h4>${FXL[k][1]} settings</h4><label class="sl"><span>Color from</span><select ${st} data-k="fp.${k}_mode"><option value="src" ${g('mode')=='src'?'selected':''}>Original colors</option><option value="cus" ${g('mode')=='cus'?'selected':''}>Custom color</option></select></label><label class="sl"><span>Glow color</span><input type="color" data-k="fp.${k}_col" value="${g('col')}"></label><label class="sl"><span>Blend</span><select ${st} data-k="fp.${k}_bl">${[['lighter','Add'],['screen','Screen'],['overlay','Overlay'],['source-over','Normal']].map(([v,t])=>`<option value="${v}" ${g('bl')==v?'selected':''}>${t}</option>`).join('')}</select></label>`;
+ for(const n in GLAB)if(n in GP[k]){const[a,b,c,s]=GLAB[n];h+=sl(a,`fp.${k}_${n}`,b,c,s,g(n))}return h}
 function drawL(l,tt){if(l.type=='audio')return;X.save();T(l,tt);const isN=l.type=='null',live=isN||(!l.hide&&tt>=l.start&&tt<=l.start+l.dur);
  if(!live){X.restore();return}
  const a=anim(l,tt),[w,h]=isN?[44,44]:B(l);l._m=X.getTransform();l._wh=[w,h];
@@ -215,15 +230,13 @@ function drawL(l,tt){if(l.type=='audio')return;X.save();T(l,tt);const isN=l.type
   if(has('echo'))for(let i=4;i>0;i--){X.save();X.globalAlpha*=.18;pass(f,i*22*A('echo'),i*22*A('echo'));X.restore()}
   if(has('mirror')){X.save();X.globalAlpha*=.5;X.scale(-1,1);X.translate(w*1.05*A('mirror'),0);pass(f,0,0);X.restore()}
   if(has('trail'))for(let i=6;i>0;i--){X.save();X.globalAlpha*=.13;pass(f,-i*14*A('trail'),0);X.restore()}
-  if(has('deep')){pass(f,0,0,l.c2,110*A('deep'));pass(f,0,0,l.c2,50*A('deep'))}
-  if(has('glow'))pass(f,0,0,l.c2,26*A('glow'));
-  if(has('bloom')){pass(f,0,0,'#ffffff',70*A('bloom'));pass(f,0,0,l.c2,30*A('bloom'))}
   let jx=0;
   if(has('tv')||has('rgb')){const k=has('tv')?A('tv'):A('rgb');if(has('tv'))jx=Math.floor(tt*14)%6==0?(Math.random()-.5)*34*k:0;pass('rgba(255,0,70,.85)',-7*k+jx,0);pass('rgba(0,230,255,.85)',7*k+jx,0)}
   if(has('bevel')){pass('rgba(255,255,255,.95)',-3*A('bevel'),-3*A('bevel'));pass('rgba(0,0,0,.55)',3*A('bevel'),3*A('bevel'))}
   if(has('glass')){const g=X.createLinearGradient(0,-h/2,0,h/2);g.addColorStop(0,'rgba(255,255,255,.6)');g.addColorStop(.5,'rgba(255,255,255,.12)');g.addColorStop(1,'rgba(255,255,255,.32)');pass(g,0,0);X.save();X.lineWidth=3;body(l,'rgba(255,255,255,.85)',1);X.restore()}else pass(f,jx,0);
   if(has('outline')){X.save();X.lineWidth=8*A('outline');body(l,l.c3,1);X.restore()}
-  if(has('neon')){X.save();X.lineWidth=6;X.shadowColor=l.c2;X.shadowBlur=30*A('neon')*ls;body(l,l.c2,1);X.restore()}}
+  for(const gk of GLK)if(has(gk))glowPass(l,gk,A(gk),tt,pass,F,K,f);
+  if(has('neon')){X.save();const nc=GV(l,'neon','col');X.globalCompositeOperation=GV(l,'neon','bl');X.lineWidth=GV(l,'neon','wid');X.shadowColor=nc;X.shadowBlur=GV(l,'neon','rad')*A('neon')*ls;body(l,nc,1);X.restore()}}
  X.restore();
  if(l.id==sel&&!ex){X.save();T(l,tt);const pr=C.width/Math.max(1,C.clientWidth),sc=Math.hypot(X.getTransform().a,X.getTransform().b)||1,u=pr/sc;X.setLineDash([8*u,6*u]);X.strokeStyle='#25D9FF';X.lineWidth=2*u;X.strokeRect(-w/2-8*u,-h/2-8*u,w+16*u,h+16*u);X.setLineDash([]);X.fillStyle='#25D9FF';[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([i,j])=>{X.beginPath();X.arc(i*(w/2+8*u),j*(h/2+8*u),5*u,0,7);X.fill()});X.restore()}}
 function media(l){if(!l.el||l.type=='img')return;const e=l.el,ins=!l.hide&&t>=l.start&&t<l.start+l.dur,want=(t-l.start)*l.speed+l.off;
@@ -329,12 +342,12 @@ function fxBody(){const l=cur(),q=($('#fxq')||{value:''}).value.trim().toLowerCa
  $('#fxc').innerHTML=FXC.map(c=>chip('fxc',c,c==fxcat,c)).join('');
  const act=Object.keys(l.fx).map(k=>sl(FXL[k][1],'fx.'+k,FXNEG.includes(k)?-1:.05,3,.05,l.fx[k]).replace('<span>','<span style="width:auto">')).join('');
  const tiles=Object.entries(FXL).filter(([k,v])=>q?(v[1].toLowerCase().includes(q)||v[0].toLowerCase().includes(q)):(fxcat=='All'||v[0]==fxcat)).map(([k,v])=>`<button class="tile ${k in l.fx?'on':''}" data-do="fx" data-v="${k}"><img class="fxth" src="${DMICO[v[1]]||thumb(k)}"><small>${v[1]}</small></button>`).join('');
- $('#fxb').innerHTML=(act?`<h4>Applied</h4>${act}`:'')+`<h4>Effects</h4><div class="chips">${tiles||'<span class="mu">No match</span>'}</div>`}
+ $('#fxb').innerHTML=(act?`<h4>Applied</h4>${act}`:'')+Object.keys(l.fx).filter(k=>GP[k]).map(k=>fxSet(l,k)).join('')+`<h4>Effects</h4><div class="chips">${tiles||'<span class="mu">No match</span>'}</div>`}
 /* ---------- dock events ---------- */
 $('#dock').addEventListener('input',e=>{const el=e.target;if(el.id=='fxq'){fxBody();return}const k=el.dataset.k;if(!k)return;const[ns,key]=k.split('.'),txt=el.type=='color'||el.tagName=='TEXTAREA'||el.type=='text'||el.tagName=='SELECT',v=txt?el.value:+el.value,l=cur();
  if(el.type=='range'){const o=el.nextElementSibling;if(o)o.textContent=(+v).toFixed(+el.step>=1?0:+el.step>=.1?1:2)}
  if(ns=='l'&&l){if(PR.includes(key))setProp(l,key,v);else if(key=='par')l.par=+v;else l[key]=v}
- else if(ns=='fx'&&l)l.fx[key]=v;else if(ns=='cam')S.cam[key]=v;else if(ns=='bg')S.bg[+key]=v;
+ else if(ns=='fx'&&l)l.fx[key]=v;else if(ns=='fp'&&l){(l.fp=l.fp||{})[key]=v}else if(ns=='cam')S.cam[key]=v;else if(ns=='bg')S.bg[+key]=v;
  else if(ns=='S'){if(key=='dur'){S.dur=v;t=Math.min(t,v)}else{S.name=v;$('#pjn').textContent=v}}});
 $('#dock').addEventListener('change',e=>{if(e.target.dataset.k){commit();tlR()}});
 $('#dock').addEventListener('click',e=>{const b=e.target.closest('[data-do]');if(!b)return;const a=b.dataset.do,v=b.dataset.v,l=cur();
